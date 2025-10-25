@@ -123,7 +123,5 @@ A short demo video is included with this repository (if present):
 
 <video controls width="640">
 	<source src="./MiniTask_Demo.mp4" type="video/mp4">
-	Your browser does not support the video tag. You can download the demo here: [MiniTask Demo.mp4](./MiniTask_Demo.mp4)
+	Your browser does not support the video tag. You can download the demo here: [MiniTask_Demo.mp4](./MiniTask_Demo.mp4)
 </video>
-
-If the video file isn't in the repository, replace the `src` above with the correct relative path or upload `MiniTask Demo.mp4` to the repo.

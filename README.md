@@ -38,6 +38,9 @@ For help getting started with Flutter development, view the [online documentatio
 - `lib/main.dart` — small launcher that runs the app
 - `pubspec.yaml` — added `path_provider` dependency
 - `data/tasks.json` — example local tasks JSON file (sample data: overdue, due tomorrow, no due date)
+ - `data/tasks.json` — example local tasks JSON file (sample data: overdue, due tomorrow, on-time)
+
+Note: For the sample JSON included here the `title` and `dueDate` fields are required (non-null). The app's `TaskStorage` will expect tasks to include these fields when loading sample data.
  - `pubspec.yaml` — added `data/tasks.json` to assets so the app bundles the sample data
 
 ## How to run

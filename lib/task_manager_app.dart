@@ -293,7 +293,29 @@ class _TasksPageState extends State<TasksPage> {
             ElevatedButton(
               onPressed: () {
                 final text = titleCtl.text.trim();
-                if (text.isEmpty) return;
+                if (text.isEmpty) {
+                  // require a title
+                  showDialog<void>(context: ctx, builder: (dctx) {
+                    return AlertDialog(
+                      title: const Text('Missing title'),
+                      content: const Text('Please enter a title for the task.'),
+                      actions: [TextButton(onPressed: () => Navigator.of(dctx).pop(), child: const Text('OK'))],
+                    );
+                  });
+                  return;
+                }
+
+                if (due == null) {
+                  // require a due date
+                  showDialog<void>(context: ctx, builder: (dctx) {
+                    return AlertDialog(
+                      title: const Text('Missing due date'),
+                      content: const Text('Please pick a due date for the task. Due date is required.'),
+                      actions: [TextButton(onPressed: () => Navigator.of(dctx).pop(), child: const Text('OK'))],
+                    );
+                  });
+                  return;
+                }
 
                 // Duplicate-title check (case-insensitive). If editing, exclude the current task id.
         final existingId = task?.id ?? '';

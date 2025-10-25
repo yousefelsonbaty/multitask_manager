@@ -1,6 +1,6 @@
 # Mini Multitask Manager
 
-This is a small Flutter app implementing a Mini multitask Manager.
+This is a small Flutter app implementing a Mini Multitask Manager.
 
 ## Getting Started
 
@@ -11,9 +11,7 @@ A few resources to get you started if this is your first Flutter project:
 - [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
 - [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+For help getting started with Flutter development, view the [online documentation](https://docs.flutter.dev/), which offers tutorials, samples, guidance on mobile development, and a full API reference.
 
 ## Features
 
@@ -71,8 +69,6 @@ flutter run
 - Improve UI styling and animations
 - Add unit tests for `TaskStorage` (mock filesystem or use integration tests)
 
-If you want, I can also: add Hive or SQLite storage, add more tests, or polish the UI.
-
 ## Build APK (Android)
 
 You can produce an Android APK for distribution or sideloading. The commands below are PowerShell-friendly and assume you have Flutter and the Android toolchain installed.
@@ -119,7 +115,7 @@ Replace the placeholder repository URL above with your own when cloning the repo
 
 ## Demo
 
-A short demo video is included with this repository (if present):
+A short demo video is included with this repository:
 
 <video controls width="640">
 	<source src="./MiniTask_Demo.mp4" type="video/mp4">

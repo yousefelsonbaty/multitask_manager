@@ -98,7 +98,7 @@ build\app\outputs\flutter-apk\app-release.apk
 
 I built a debug APK and placed a copy in the repository under `releases/` (so you can download it directly from this clone):
 
-[Download MiniTask debug APK](./releases/MiniTask-App-debug.apk)
+[Download MiniTask debug APK](./releases/MiniTask-App-debug.apk) — 143,706,828 bytes (≈137.0 MB), SHA-256: 814B66B6C5E374309018CE529FB617C3698EF3ECB253BC97FF395F077869D046
 
 Install the APK onto a connected device or emulator:
 

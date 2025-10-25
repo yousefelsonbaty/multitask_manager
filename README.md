@@ -96,9 +96,9 @@ Where the APK is written (example path):
 build\app\outputs\flutter-apk\app-release.apk
 ```
 
-I built a release APK and placed a copy in the repository under `releases/` (so you can download it directly from this clone):
+I built a debug APK and placed a copy in the repository under `releases/` (so you can download it directly from this clone):
 
-[Download MiniTask release APK](./releases/MiniTask-App-release.apk)
+[Download MiniTask debug APK](./releases/MiniTask-App-debug.apk)
 
 Install the APK onto a connected device or emulator:
 

@@ -1,0 +1,1149 @@
+import 'package:flutter/material.dart';
+
+import 'models/task.dart';
+import 'services/task_storage.dart';
+
+/// Minimal, clean Task Manager UI.
+class TaskManagerApp extends StatefulWidget {
+  const TaskManagerApp({Key? key}) : super(key: key);
+
+  @override
+  State<TaskManagerApp> createState() => _TaskManagerAppState();
+}
+
+class _TaskManagerAppState extends State<TaskManagerApp> {
+  ThemeMode _themeMode = ThemeMode.light;
+
+  void _toggleTheme(ThemeMode mode) => setState(() => _themeMode = mode);
+
+  @override
+  Widget build(BuildContext context) {
+    final seed = Colors.teal;
+    final light = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
+    final dark = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
+
+    return MaterialApp(
+      title: 'Mini Task Manager',
+      theme: ThemeData.from(colorScheme: light, useMaterial3: true),
+      darkTheme: ThemeData.from(colorScheme: dark, useMaterial3: true),
+      themeMode: _themeMode,
+      home: TasksPage(themeMode: _themeMode, onToggleTheme: _toggleTheme),
+    );
+  }
+}
+
+class TasksPage extends StatefulWidget {
+  final ThemeMode themeMode;
+  final void Function(ThemeMode) onToggleTheme;
+
+  const TasksPage({Key? key, required this.themeMode, required this.onToggleTheme}) : super(key: key);
+
+  @override
+  State<TasksPage> createState() => _TasksPageState();
+}
+
+class _TasksPageState extends State<TasksPage> {
+  final TaskStorage _storage = TaskStorage();
+  List<Task> _tasks = [];
+  bool _isSearching = false;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final list = await _storage.loadTasks();
+    setState(() => _tasks = list);
+  }
+
+  Future<void> _save() async => _storage.saveTasks(_tasks);
+
+  List<Task> get _visibleTasks {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return _tasks;
+    return _tasks.where((t) => t.title.toLowerCase().contains(q)).toList();
+  }
+
+  String _formatDate(DateTime d) => '${d.month}/${d.day}/${d.year}';
+
+  Future<void> _addOrEditTask({Task? task}) async {
+    final isNew = task == null;
+    final titleCtl = TextEditingController(text: task?.title ?? '');
+    DateTime? due = task?.dueDate;
+
+    await showDialog<void>(context: context, builder: (ctx) {
+      return AlertDialog(
+        title: Text(isNew ? 'Add Task' : 'Edit Task'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: titleCtl, decoration: const InputDecoration(labelText: 'Title'), autofocus: true),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: Text(due == null ? 'No due date' : _formatDate(due))),
+              TextButton(
+                onPressed: () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: due ?? now,
+                    firstDate: DateTime(now.year, now.month, now.day),
+                    lastDate: DateTime(2100),
+                    selectableDayPredicate: (day) {
+                      final today = DateTime(now.year, now.month, now.day);
+                      final d = DateTime(day.year, day.month, day.day);
+                      return !d.isBefore(today);
+                    },
+                  );
+                  if (picked != null) setState(() => due = picked);
+                },
+                child: const Text('Pick date'),
+              )
+            ])
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final text = titleCtl.text.trim();
+              if (text.isEmpty) return;
+              if (isNew) {
+                final t = Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: text, completed: false, dueDate: due);
+                setState(() => _tasks.insert(0, t));
+              } else {
+                final idx = _tasks.indexWhere((e) => e.id == task!.id);
+                if (idx != -1) _tasks[idx] = task!.copyWith(title: text, dueDate: due);
+              }
+              _save();
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Save'),
+          )
+        ],
+      );
+    });
+  }
+
+  void _deleteTask(Task t) {
+    setState(() => _tasks.removeWhere((e) => e.id == t.id));
+    _save();
+  }
+
+  void _toggleCompleted(Task t, bool? v) {
+    final idx = _tasks.indexWhere((e) => e.id == t.id);
+    if (idx == -1) return;
+    setState(() => _tasks[idx] = _tasks[idx].copyWith(completed: v ?? false));
+    _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.titleMedium;
+    final subtitleStyle = titleStyle?.copyWith(color: titleStyle.color);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: _isSearching
+            ? TextField(decoration: const InputDecoration(hintText: 'Search tasks', border: InputBorder.none), onChanged: (v) => setState(() => _searchQuery = v))
+            : const Text('Tasks'),
+        actions: [
+          IconButton(icon: Icon(_isSearching ? Icons.close : Icons.search), onPressed: () => setState(() { if (_isSearching) _searchQuery = ''; _isSearching = !_isSearching; })),
+          PopupMenuButton<ThemeMode>(
+            onSelected: widget.onToggleTheme,
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(value: ThemeMode.light, child: Text('Light')),
+              PopupMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+            ],
+            icon: const Icon(Icons.brightness_6),
+          )
+        ],
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _visibleTasks.length,
+        itemBuilder: (context, i) {
+          final t = _visibleTasks[i];
+          return Dismissible(
+            key: ValueKey(t.id),
+            background: Container(color: theme.colorScheme.error, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete, color: Colors.white)),
+            direction: DismissDirection.endToStart,
+            onDismissed: (_) => _deleteTask(t),
+            child: Card(
+              child: ListTile(
+                leading: SizedBox(width: 36, child: Checkbox(value: t.completed, onChanged: (v) => _toggleCompleted(t, v))),
+                title: Text(t.title, style: titleStyle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: t.dueDate == null ? null : Text(_formatDate(t.dueDate!), style: subtitleStyle),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(onPressed: () => _addOrEditTask(task: t), icon: const Icon(Icons.edit))]),
+              ),
+            ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(onPressed: () => _addOrEditTask(), label: const Text('Add Task'), icon: const Icon(Icons.add)),
+    );
+  }
+}
+
+import 'package:flutter/material.dart';
+
+import 'models/task.dart';
+import 'services/task_storage.dart';
+
+enum TaskFilter { all, active, completed }
+
+class TaskManagerApp extends StatefulWidget {
+  const TaskManagerApp({super.key});
+
+  @override
+  State<TaskManagerApp> createState() => _TaskManagerAppState();
+}
+
+class _TaskManagerAppState extends State<TaskManagerApp> {
+  ThemeMode _themeMode = ThemeMode.light; // only light/dark per user's request
+
+  void _toggleTheme() {
+    setState(() {
+      _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final seed = Colors.deepPurple;
+    final lightScheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
+    final darkScheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
+
+    final lightTheme = ThemeData.from(colorScheme: lightScheme, useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: lightScheme.surface,
+      appBarTheme: AppBarTheme(backgroundColor: lightScheme.primary, foregroundColor: lightScheme.onPrimary, elevation: 2, centerTitle: false),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(backgroundColor: lightScheme.primary, foregroundColor: lightScheme.onPrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      ),
+      inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: lightScheme.surfaceContainerHighest, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: lightScheme.primary, foregroundColor: lightScheme.onPrimary),
+    );
+
+    final darkTheme = ThemeData.from(colorScheme: darkScheme, useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: darkScheme.surface,
+      appBarTheme: AppBarTheme(backgroundColor: darkScheme.primary, foregroundColor: darkScheme.onPrimary, elevation: 2, centerTitle: false),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(backgroundColor: darkScheme.primary, foregroundColor: darkScheme.onPrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      ),
+      inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: darkScheme.surfaceContainerHighest, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: darkScheme.primary, foregroundColor: darkScheme.onPrimary),
+    );
+
+    return MaterialApp(
+      title: 'Mini Task Manager',
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: _themeMode,
+      home: TasksPage(themeMode: _themeMode, onToggleTheme: _toggleTheme),
+    );
+  }
+}
+
+class TasksPage extends StatefulWidget {
+  final ThemeMode themeMode;
+  final VoidCallback onToggleTheme;
+
+  const TasksPage({super.key, required this.themeMode, required this.onToggleTheme});
+
+  @override
+  State<TasksPage> createState() => _TasksPageState();
+}
+
+class _TasksPageState extends State<TasksPage> {
+  final TaskStorage _storage = TaskStorage();
+  List<Task> _tasks = [];
+  TaskFilter _filter = TaskFilter.all;
+  bool _isSearching = false;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final tasks = await _storage.loadTasks();
+    setState(() {
+      _tasks = tasks;
+    });
+  }
+
+  Future<void> _save() async {
+    await _storage.saveTasks(_tasks);
+  }
+
+  List<Task> get _visibleTasks {
+    List<Task> base;
+    switch (_filter) {
+      case TaskFilter.active:
+        base = _tasks.where((t) => !t.completed).toList();
+        break;
+      case TaskFilter.completed:
+        base = _tasks.where((t) => t.completed).toList();
+        break;
+      case TaskFilter.all:
+      default:
+        base = _tasks;
+    }
+
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return base;
+    return base.where((t) => t.title.toLowerCase().contains(q)).toList();
+  }
+
+  String _formatDate(DateTime d) => '${d.month}/${d.day}/${d.year}';
+
+  Future<void> _addOrEditTask({Task? task}) async {
+    final titleController = TextEditingController(text: task?.title ?? '');
+    DateTime? chosenDate = task?.dueDate;
+
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) {
+        return AlertDialog(
+          title: Text(task == null ? 'Add Task' : 'Edit Task'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title'), autofocus: true),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: Text(chosenDate == null ? 'No due date' : 'Due: ${_formatDate(chosenDate!)}')),
+                  TextButton(
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      final today = DateTime(now.year, now.month, now.day);
+                      final initial = (chosenDate != null && chosenDate.isBefore(today)) ? today : (chosenDate ?? today);
+
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: initial,
+                        firstDate: today,
+                        lastDate: DateTime(now.year + 5),
+                        selectableDayPredicate: (date) => !date.isBefore(today),
+                      );
+                      if (picked != null) setDialogState(() => chosenDate = picked);
+                    },
+                    child: const Text('Set'),
+                  ),
+                  if (chosenDate != null) TextButton(onPressed: () => setDialogState(() => chosenDate = null), child: const Text('Clear')),
+                ])
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final t = titleController.text.trim();
+                if (t.isEmpty) return;
+                if (task == null) {
+                  final newTask = Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: t, completed: false, dueDate: chosenDate);
+                  setState(() => _tasks.insert(0, newTask));
+                } else {
+                  setState(() {
+                    task.title = t;
+                    task.dueDate = chosenDate;
+                  });
+                }
+                _save();
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    setState(() => _tasks.removeWhere((t) => t.id == task.id));
+    await _save();
+  }
+
+  Future<void> _toggleCompleted(Task task, bool? value) async {
+    setState(() => task.completed = value ?? false);
+    await _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: _isSearching
+            ? SizedBox(
+                height: kToolbarHeight - 16,
+                child: TextField(
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search tasks',
+                    hintStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withAlpha(217)),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                ),
+              )
+            : const Text('Mini Task Manager'),
+        actions: [
+          IconButton(
+            tooltip: 'Search',
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () => setState(() {
+              if (_isSearching) {
+                _isSearching = false;
+                _searchQuery = '';
+              } else {
+                _isSearching = true;
+              }
+            }),
+          ),
+          IconButton(
+            tooltip: 'Toggle light/dark',
+            icon: Icon(widget.themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode),
+            onPressed: widget.onToggleTheme,
+          ),
+          PopupMenuButton<TaskFilter>(
+            onSelected: (f) => setState(() => _filter = f),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: TaskFilter.all, child: Text('All')),
+              const PopupMenuItem(value: TaskFilter.active, child: Text('Active')),
+              const PopupMenuItem(value: TaskFilter.completed, child: Text('Completed')),
+            ],
+            icon: const Icon(Icons.filter_list),
+          ),
+        ],
+      ),
+      body: _visibleTasks.isEmpty
+          ? const Center(child: Text('No tasks. Tap + to add one.'))
+          : ListView.builder(
+              itemCount: _visibleTasks.length,
+              itemBuilder: (context, index) {
+                final t = _visibleTasks[index];
+                return Dismissible(
+                  key: ValueKey(t.id),
+                  background: Container(
+                    color: Colors.red,
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Align(alignment: Alignment.centerLeft, child: Icon(Icons.delete, color: Colors.white)),
+                    ),
+                  ),
+                  secondaryBackground: Container(
+                    color: Colors.red,
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Align(alignment: Alignment.centerRight, child: Icon(Icons.delete, color: Colors.white)),
+                    ),
+                  ),
+                  onDismissed: (_) => _deleteTask(t),
+                  child: Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Builder(builder: (ctx) {
+                        final titleStyle = Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, decoration: t.completed ? TextDecoration.lineThrough : null);
+                        final subtitleStyle = Theme.of(ctx).textTheme.bodySmall?.copyWith(color: titleStyle?.color ?? Theme.of(ctx).colorScheme.onSurface);
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          leading: SizedBox(width: 40, child: Center(child: Checkbox(value: t.completed, onChanged: (v) => _toggleCompleted(t, v)))),
+                          title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                          subtitle: t.dueDate == null ? null : Text('Due ${_formatDate(t.dueDate!)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: subtitleStyle),
+                          onTap: () => _addOrEditTask(task: t),
+                          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(icon: const Icon(Icons.edit), onPressed: () => _addOrEditTask(task: t), tooltip: 'Edit'),
+                            IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _deleteTask(t), tooltip: 'Delete'),
+                          ]),
+                        );
+                      }),
+                    ),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(onPressed: () => _addOrEditTask(), icon: const Icon(Icons.add), label: const Text('Add Task')),
+    );
+  }
+}
+    final seed = Colors.deepPurple;
+    final lightScheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
+    final darkScheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
+
+    final lightTheme = ThemeData.from(colorScheme: lightScheme, useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: lightScheme.surface,
+      appBarTheme: AppBarTheme(backgroundColor: lightScheme.primary, foregroundColor: lightScheme.onPrimary, elevation: 2, centerTitle: false),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(backgroundColor: lightScheme.primary, foregroundColor: lightScheme.onPrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      ),
+      inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: lightScheme.surfaceContainerHighest, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: lightScheme.primary, foregroundColor: lightScheme.onPrimary),
+    );
+
+    final darkTheme = ThemeData.from(colorScheme: darkScheme, useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: darkScheme.surface,
+      appBarTheme: AppBarTheme(backgroundColor: darkScheme.primary, foregroundColor: darkScheme.onPrimary, elevation: 2, centerTitle: false),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(backgroundColor: darkScheme.primary, foregroundColor: darkScheme.onPrimary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+      ),
+      inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: darkScheme.surfaceContainerHighest, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: darkScheme.primary, foregroundColor: darkScheme.onPrimary),
+    );
+
+    return MaterialApp(
+      title: 'Mini Task Manager',
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: _themeMode,
+      home: TasksPage(themeMode: _themeMode, onToggleTheme: _toggleTheme),
+    );
+  }
+}
+
+class TasksPage extends StatefulWidget {
+  final ThemeMode themeMode;
+  final VoidCallback onToggleTheme;
+
+  const TasksPage({super.key, required this.themeMode, required this.onToggleTheme});
+
+  @override
+  State<TasksPage> createState() => _TasksPageState();
+}
+
+class _TasksPageState extends State<TasksPage> {
+  final TaskStorage _storage = TaskStorage();
+  List<Task> _tasks = [];
+  TaskFilter _filter = TaskFilter.all;
+  bool _isSearching = false;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final tasks = await _storage.loadTasks();
+    setState(() {
+      _tasks = tasks;
+    });
+  }
+
+  Future<void> _save() async {
+    await _storage.saveTasks(_tasks);
+  }
+
+  List<Task> get _visibleTasks {
+    List<Task> base;
+    switch (_filter) {
+      case TaskFilter.active:
+        base = _tasks.where((t) => !t.completed).toList();
+        break;
+      case TaskFilter.completed:
+        base = _tasks.where((t) => t.completed).toList();
+        break;
+      case TaskFilter.all:
+      default:
+        base = _tasks;
+    }
+
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return base;
+    return base.where((t) => t.title.toLowerCase().contains(q)).toList();
+  }
+
+  String _formatDate(DateTime d) => '${d.month}/${d.day}/${d.year}';
+
+  Future<void> _addOrEditTask({Task? task}) async {
+    final titleController = TextEditingController(text: task?.title ?? '');
+    DateTime? chosenDate = task?.dueDate;
+
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) {
+        return AlertDialog(
+          title: Text(task == null ? 'Add Task' : 'Edit Task'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Title'), autofocus: true),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: Text(chosenDate == null ? 'No due date' : 'Due: ${_formatDate(chosenDate!)}')),
+                  TextButton(
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      final today = DateTime(now.year, now.month, now.day);
+                      final initial = (chosenDate != null && chosenDate.isBefore(today)) ? today : (chosenDate ?? today);
+
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: initial,
+                        firstDate: today,
+                        lastDate: DateTime(now.year + 5),
+                        selectableDayPredicate: (date) => !date.isBefore(today),
+                      );
+                      if (picked != null) setDialogState(() => chosenDate = picked);
+                    },
+                    child: const Text('Set'),
+                  ),
+                  if (chosenDate != null) TextButton(onPressed: () => setDialogState(() => chosenDate = null), child: const Text('Clear')),
+                ])
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final t = titleController.text.trim();
+                if (t.isEmpty) return;
+                if (task == null) {
+                  final newTask = Task(id: DateTime.now().millisecondsSinceEpoch.toString(), title: t, completed: false, dueDate: chosenDate);
+                  setState(() => _tasks.insert(0, newTask));
+                } else {
+                  setState(() {
+                    task.title = t;
+                    task.dueDate = chosenDate;
+                  });
+                }
+                _save();
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    setState(() => _tasks.removeWhere((t) => t.id == task.id));
+    await _save();
+  }
+
+  Future<void> _toggleCompleted(Task task, bool? value) async {
+    setState(() => task.completed = value ?? false);
+    await _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: _isSearching
+            ? SizedBox(
+                height: kToolbarHeight - 16,
+                child: TextField(
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search tasks',
+                    hintStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withAlpha(217)),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                ),
+              )
+            : const Text('Mini Task Manager'),
+        actions: [
+          IconButton(
+            tooltip: 'Search',
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () => setState(() {
+              if (_isSearching) {
+                _isSearching = false;
+                _searchQuery = '';
+              } else {
+                _isSearching = true;
+              }
+            }),
+          ),
+          IconButton(
+            tooltip: 'Toggle light/dark',
+            icon: Icon(widget.themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode),
+            onPressed: widget.onToggleTheme,
+          ),
+          PopupMenuButton<TaskFilter>(
+            onSelected: (f) => setState(() => _filter = f),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: TaskFilter.all, child: Text('All')),
+              const PopupMenuItem(value: TaskFilter.active, child: Text('Active')),
+              const PopupMenuItem(value: TaskFilter.completed, child: Text('Completed')),
+            ],
+            icon: const Icon(Icons.filter_list),
+          ),
+        ],
+      ),
+      body: _visibleTasks.isEmpty
+          ? const Center(child: Text('No tasks. Tap + to add one.'))
+          : ListView.builder(
+              itemCount: _visibleTasks.length,
+              itemBuilder: (context, index) {
+                final t = _visibleTasks[index];
+                return Dismissible(
+                  key: ValueKey(t.id),
+                  background: Container(
+                    color: Colors.red,
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Align(alignment: Alignment.centerLeft, child: Icon(Icons.delete, color: Colors.white)),
+                    ),
+                  ),
+                  secondaryBackground: Container(
+                    color: Colors.red,
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Align(alignment: Alignment.centerRight, child: Icon(Icons.delete, color: Colors.white)),
+                    ),
+                  ),
+                  onDismissed: (_) => _deleteTask(t),
+                  child: Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Builder(builder: (ctx) {
+                        final titleStyle = Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, decoration: t.completed ? TextDecoration.lineThrough : null);
+                        final subtitleStyle = Theme.of(ctx).textTheme.bodySmall?.copyWith(color: titleStyle?.color ?? Theme.of(ctx).colorScheme.onSurface);
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          leading: SizedBox(width: 40, child: Center(child: Checkbox(value: t.completed, onChanged: (v) => _toggleCompleted(t, v)))),
+                          title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                          subtitle: t.dueDate == null ? null : Text('Due ${_formatDate(t.dueDate!)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: subtitleStyle),
+                          onTap: () => _addOrEditTask(task: t),
+                          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                            IconButton(icon: const Icon(Icons.edit), onPressed: () => _addOrEditTask(task: t), tooltip: 'Edit'),
+                            IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _deleteTask(t), tooltip: 'Delete'),
+                          ]),
+                        );
+                      }),
+                    ),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(onPressed: () => _addOrEditTask(), icon: const Icon(Icons.add), label: const Text('Add Task')),
+    );
+  }
+}
+import 'package:flutter/material.dart';
+
+import 'models/task.dart';
+import 'services/task_storage.dart';
+
+enum TaskFilter { all, active, completed }
+
+class TaskManagerApp extends StatefulWidget {
+  const TaskManagerApp({super.key});
+
+  @override
+  State<TaskManagerApp> createState() => _TaskManagerAppState();
+}
+
+class _TaskManagerAppState extends State<TaskManagerApp> {
+  // start with light theme by default; toggle will switch between light and dark only
+  ThemeMode _themeMode = ThemeMode.light;
+
+  void _cycleThemeMode() {
+    setState(() {
+      _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final seed = Colors.deepPurple;
+    final lightScheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.light);
+    final darkScheme = ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
+
+    final baseTheme = ThemeData.from(colorScheme: lightScheme, useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: lightScheme.surface,
+      appBarTheme: AppBarTheme(
+        backgroundColor: lightScheme.primary,
+        foregroundColor: lightScheme.onPrimary,
+        elevation: 2,
+        centerTitle: false,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: lightScheme.primary,
+          foregroundColor: lightScheme.onPrimary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: lightScheme.surfaceContainerHighest,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: lightScheme.primary,
+        foregroundColor: lightScheme.onPrimary,
+      ),
+    );
+
+    final darkTheme = ThemeData.from(colorScheme: darkScheme, useMaterial3: true).copyWith(
+      scaffoldBackgroundColor: darkScheme.surface,
+      appBarTheme: AppBarTheme(
+        backgroundColor: darkScheme.primary,
+        foregroundColor: darkScheme.onPrimary,
+        elevation: 2,
+        centerTitle: false,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: darkScheme.primary,
+          foregroundColor: darkScheme.onPrimary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: darkScheme.surfaceContainerHighest,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: darkScheme.primary,
+        foregroundColor: darkScheme.onPrimary,
+      ),
+    );
+
+    return MaterialApp(
+      title: 'Mini Task Manager',
+      theme: baseTheme,
+      darkTheme: darkTheme,
+                      child: Builder(builder: (ctx) {
+                        final titleStyle = Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              decoration: t.completed ? TextDecoration.lineThrough : null,
+                            );
+
+                        final subtitleStyle = Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                              color: titleStyle?.color ?? Theme.of(ctx).colorScheme.onSurface,
+                            );
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          leading: SizedBox(
+                            width: 40,
+                            child: Center(
+                              child: Checkbox(
+                                value: t.completed,
+                                onChanged: (v) => _toggleCompleted(t, v),
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: titleStyle,
+                          ),
+                          subtitle: t.dueDate == null
+                              ? null
+                              : Text(
+                                  'Due ${_formatDate(t.dueDate!)}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: subtitleStyle,
+                                ),
+                          onTap: () => _addOrEditTask(task: t),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => _addOrEditTask(task: t),
+                                tooltip: 'Edit',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => _deleteTask(t),
+                                tooltip: 'Delete',
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+      case TaskFilter.all:
+        base = _tasks;
+        break;
+    }
+
+    if (_searchQuery.trim().isEmpty) return base;
+    final q = _searchQuery.toLowerCase();
+    return base.where((t) => t.title.toLowerCase().contains(q)).toList();
+  }
+
+  String _formatDate(DateTime d) {
+    return '${d.month}/${d.day}/${d.year}';
+  }
+
+  Future<void> _addOrEditTask({Task? task}) async {
+    final titleController = TextEditingController(text: task?.title ?? '');
+    DateTime? chosenDate = task?.dueDate;
+
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(builder: (context, setDialogState) {
+        return AlertDialog(
+          title: Text(task == null ? 'Add Task' : 'Edit Task'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: 'Title'),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(chosenDate == null ? 'No due date' : 'Due: ${_formatDate(chosenDate!)}'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final now = DateTime.now();
+                        final today = DateTime(now.year, now.month, now.day);
+                        final initial = (chosenDate != null && chosenDate!.isBefore(today)) ? today : (chosenDate ?? today);
+
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: initial,
+                          firstDate: today,
+                          lastDate: DateTime(now.year + 5),
+                          selectableDayPredicate: (date) => !date.isBefore(today),
+                        );
+                        if (picked != null) {
+                          setDialogState(() {
+                            chosenDate = picked;
+                          });
+                        }
+                      },
+                      child: const Text('Set'),
+                    ),
+                    if (chosenDate != null)
+                      TextButton(
+                        onPressed: () => setDialogState(() => chosenDate = null),
+                        child: const Text('Clear'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final t = titleController.text.trim();
+                if (t.isEmpty) return;
+                if (task == null) {
+                  final newTask = Task(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    title: t,
+                    completed: false,
+                    dueDate: chosenDate,
+                  );
+                  setState(() {
+                    _tasks.insert(0, newTask);
+                  });
+                } else {
+                  setState(() {
+                    task.title = t;
+                    task.dueDate = chosenDate;
+                  });
+                }
+                _save();
+                Navigator.of(context).pop(true);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    setState(() {
+      _tasks.removeWhere((t) => t.id == task.id);
+    });
+    await _save();
+  }
+
+  Future<void> _toggleCompleted(Task task, bool? value) async {
+    setState(() {
+      task.completed = value ?? false;
+    });
+    await _save();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: _isSearching
+            ? SizedBox(
+                height: kToolbarHeight - 16,
+                child: TextField(
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search tasks',
+                    hintStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withAlpha(217)),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                ),
+              )
+            : const Text('Mini Task Manager'),
+        actions: [
+          IconButton(
+            tooltip: 'Search',
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () => setState(() {
+              if (_isSearching) {
+                _isSearching = false;
+                _searchQuery = '';
+              } else {
+                _isSearching = true;
+              }
+            }),
+          ),
+          IconButton(
+            tooltip: 'Toggle light/dark',
+            icon: Icon(widget.themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode),
+            onPressed: widget.onCycleTheme,
+          ),
+          PopupMenuButton<TaskFilter>(
+            onSelected: (f) => setState(() => _filter = f),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: TaskFilter.all, child: Text('All')),
+              const PopupMenuItem(value: TaskFilter.active, child: Text('Active')),
+              const PopupMenuItem(value: TaskFilter.completed, child: Text('Completed')),
+            ],
+            icon: const Icon(Icons.filter_list),
+          ),
+        ],
+      ),
+      body: _visibleTasks.isEmpty
+          ? const Center(child: Text('No tasks. Tap + to add one.'))
+          : ListView.builder(
+              itemCount: _visibleTasks.length,
+              itemBuilder: (context, index) {
+                final t = _visibleTasks[index];
+                return Dismissible(
+                  key: ValueKey(t.id),
+                  background: Container(
+                      color: Colors.red,
+                      child: const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Align(alignment: Alignment.centerLeft, child: Icon(Icons.delete, color: Colors.white)))),
+                  secondaryBackground: Container(
+                      color: Colors.red,
+                      child: const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Align(alignment: Alignment.centerRight, child: Icon(Icons.delete, color: Colors.white)))),
+                  onDismissed: (_) => _deleteTask(t),
+                  child: Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        leading: SizedBox(
+                          width: 40,
+                          child: Center(
+                            child: Checkbox(
+                              value: t.completed,
+                              onChanged: (v) => _toggleCompleted(t, v),
+                            ),
+                          ),
+                        ),
+                        // determine a title style from the theme so we can match subtitle color
+                        title: Builder(builder: (ctx) {
+                          final titleStyle = Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                decoration: t.completed ? TextDecoration.lineThrough : null,
+                              );
+                          // subtitleColor intentionally not stored; subtitle will reference title color below
+                          return Text(
+                            t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: titleStyle,
+                          );
+                        }),
+                        subtitle: t.dueDate == null
+                            ? null
+                            : Text(
+                                'Due ${_formatDate(t.dueDate!)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).textTheme.titleMedium?.color ?? Theme.of(context).colorScheme.onSurface,
+                                    ),
+                              ),
+                        onTap: () => _addOrEditTask(task: t),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => _addOrEditTask(task: t),
+                              tooltip: 'Edit',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => _deleteTask(t),
+                              tooltip: 'Delete',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _addOrEditTask(),
+        icon: const Icon(Icons.add),
+        label: const Text('Add Task'),
+      ),
+    );
+  }
+}

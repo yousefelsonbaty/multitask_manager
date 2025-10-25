@@ -111,8 +111,6 @@ Notes on signing and Play Store releases:
 flutter build appbundle --release
 ```
 
-Replace the placeholder repository URL above with your own when cloning the repo. If you want, I can add a short paragraph describing how to generate a keystore and configure Gradle signing.
-
 ## Demo
 
 A short demo video is included with this repository:

@@ -37,6 +37,8 @@ For help getting started with Flutter development, view the [online documentatio
 - `lib/task_manager_app.dart` — main UI (tasks list, add/edit dialog, filter)
 - `lib/main.dart` — small launcher that runs the app
 - `pubspec.yaml` — added `path_provider` dependency
+- `data/tasks.json` — example local tasks JSON file (sample data: overdue, due tomorrow, no due date)
+ - `pubspec.yaml` — added `data/tasks.json` to assets so the app bundles the sample data
 
 ## How to run
 

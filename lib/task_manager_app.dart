@@ -552,8 +552,9 @@ class _TasksPageState extends State<TasksPage> {
                           title: Text(
                             t.title,
                             style: titleStyle?.copyWith(decoration: t.completed ? TextDecoration.lineThrough : null),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
+                            softWrap: true,
                           ),
                           subtitle: t.dueDate == null
                               ? (t.completed

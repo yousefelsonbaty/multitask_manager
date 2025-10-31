@@ -90,10 +90,10 @@ Build a debug APK (useful for quick testing):
 flutter build apk --debug
 ```
 
-Where the APK is written (example path):
+Where the APK is written:
 
 ```
-build\app\outputs\flutter-apk\app-release.apk
+releases/MiniTask-App-debug.apk
 ```
 
 I built a debug APK and placed a copy in the repository under `releases/` (so you can download it directly from this clone):
